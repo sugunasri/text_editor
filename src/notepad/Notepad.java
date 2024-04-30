@@ -1,10 +1,13 @@
 package notepad;
 
-import java.time.LocalDateTime;
+import java.time.LocalDateTime;  
+// import java.time.format.DateTimeFormatter;  
 import java.util.*;
+
 import action.Action;
 
 public class Notepad {
+
     Scanner scn = new Scanner(System.in);
     private int id = 1;
     private String[] notepad;
@@ -35,7 +38,7 @@ public class Notepad {
     }
 
     public void display(int startingline, int endingline) {
-        if (startingline < 0 || startingline > endingline || endingline > this.capacity) {
+        if (startingline < 0 || startingline >= endingline || endingline > this.capacity) {
             System.out.println("Unable to display text. Please check the input once more");
             return;
         }
@@ -51,48 +54,26 @@ public class Notepad {
             System.out.println("Invalid line number");
             return;
         }
-    
-        if (notepad[linenumber - 1] != null && !notepad[linenumber - 1].isEmpty()) {
-            System.out.println("There is already text at line " + linenumber);
-            System.out.println("Do you want to insert a new line or replace the existing one?");
-            System.out.println("1. Insert a new line");
-            System.out.println("2. Replace the existing line");
-    
-            int choice = scn.nextInt();
-            scn.nextLine(); // Consume newline character
-            switch (choice) {
-                case 1:
-                    shiftLinesDown(linenumber);
-                    notepad[linenumber - 1] = text;
-                    break;
-                case 2:
-                    notepad[linenumber - 1] = text;
-                    break;
-                default:
-                    System.out.println("Invalid choice. Inserting as a new line by default.");
-                    shiftLinesDown(linenumber);
-                    notepad[linenumber - 1] = text;
-                    break;
-            }
-        } else {
-            notepad[linenumber - 1] = text;
+        if (findNextAvailableLine() == -1) {
+            delete(capacity);
         }
-    
+        shiftLinesDown(linenumber);
+        notepad[linenumber - 1] = text;
         undoAction.push(new Action(id++, LocalDateTime.now(), true, linenumber, text));
     }
     
+
     public void insertLine(String text) {
         int nextAvailableLine = findNextAvailableLine();
         if (nextAvailableLine == -1) {
             System.out.println("Notepad limit reached. Unable to insert.");
             return;
         }
-    
+
         notepad[nextAvailableLine] = text;
-    
+
         undoAction.push(new Action(id++, LocalDateTime.now(), true, nextAvailableLine + 1, text));
     }
-    
 
     private int findNextAvailableLine() {
         for (int i = 0; i < capacity; i++) {
@@ -100,62 +81,68 @@ public class Notepad {
                 return i;
             }
         }
-        return -1; // Notepad is full
+        return -1;
     }
 
     private void shiftLinesDown(int startingLine) {
-        for (int i = capacity - 1; i >= startingLine; i--) {
-            if (i + 1 < capacity) {
+        for (int i = capacity - 1; i >= startingLine - 1; i--) {
+            if (i < capacity - 1) {
                 notepad[i + 1] = notepad[i];
             }
         }
-        notepad[startingLine] = ""; // Clear the line at the specified position to make space for the new line
     }
 
     public void delete(int linenumber) {
-        if (linenumber > capacity) {
-            System.out.println("no such row exists");
+        if (linenumber < 1 || linenumber > capacity) {
+            System.out.println("Invalid line number");
             return;
         }
-        if (notepad[linenumber - 1] == null) {
-            System.out.println("Nothing to delete");
+        if (notepad[linenumber - 1] == null || notepad[linenumber - 1].isEmpty()) {
+            System.out.println("Nothing to delete at line " + linenumber);
             return;
         }
-
         undoAction.push(new Action(id++, LocalDateTime.now(), false, linenumber, notepad[linenumber - 1]));
         shiftLinesUp(linenumber);
-    }
 
-    private void shiftLinesUp(int startingLine) {
-        for (int i = startingLine - 1; i < capacity - 1; i++) {
-            notepad[i] = notepad[i + 1];
-        }
         notepad[capacity - 1] = null;
     }
 
+    private void shiftLinesUp(int startingLine) {
+        for (int i = startingLine; i < capacity - 1; i++) {
+            notepad[i - 1] = notepad[i];
+        }
+    }
+
     public void delete(int startingline, int endingline) {
-        if (startingline < 0 || startingline > endingline || endingline > capacity) {
+        if (startingline < 1 || startingline > endingline || endingline > capacity) {
             System.out.println("Unable to delete. Please check the inputs");
             return;
         }
-        for (int i = startingline; i <= endingline; i++) {
-            delete(i);
+        for (int i = startingline - 1; i < endingline; i++) {
+            delete(startingline);
         }
     }
 
     public void copy(int startingline, int endingline) {
-        if (startingline < 0 || startingline > endingline | endingline > this.capacity) {
+        if (startingline < 0 || startingline > endingline || endingline > this.capacity) {
             System.out.println("Unable to copy");
             return;
         }
-
-        String copytext = " ";
+    
+        StringBuilder copytext = new StringBuilder();
         for (int i = startingline; i < endingline; i++) {
-            copytext += (notepad[i] + "\n");
+            if (notepad[i] != null && !notepad[i].isEmpty()) {
+                copytext.append(notepad[i]).append("\n");
+            }
         }
-        if (!copytext.isEmpty())
-            clipboard.add(copytext);
+    
+        if (clipboard.size() >= 6) { //considering clipboard size is 6
+            clipboard.poll(); // Remove the oldest entry (first stored data)
+        }
+    
+        clipboard.add(copytext.toString());
     }
+    
 
     public void paste(int linenumber) {
         if (this.clipboard.isEmpty()) {
@@ -174,7 +161,11 @@ public class Notepad {
 
         Action action = this.undoAction.pop();
 
-        delete(action.getLineNo());
+        if (action.isAddition()) {
+            delete(action.getLineNo());
+        } else {
+            insertLine(action.getLineNo(), action.gettext());
+        }
     }
 
     public void redo() {
@@ -182,8 +173,16 @@ public class Notepad {
             System.out.println("Nothing to redo");
             return;
         }
-
+    
         Action action = redoAction.pop();
-        insertLine(action.getLineNo(), action.gettext());
+    
+        if (action.isAddition()) {
+            insertLine(action.getLineNo(), action.gettext());
+        } else {
+            delete(action.getLineNo());
+        }
+    
+        undoAction.push(action);
     }
+    
 }
